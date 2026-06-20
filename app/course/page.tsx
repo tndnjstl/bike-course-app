@@ -627,36 +627,11 @@ export default function CoursePage() {
         </div>
 
         {/* 코스 결과 */}
-        {/* 코스 결과: 로딩 중엔 통합 로딩 카드, 완료 시 실제 데이터 */}
+        {/* 코스 결과: 로딩 중엔 스피너 카드, 완료 시 실제 데이터 */}
         {(loading || elevLoading) ? (
-          <div className="bg-gray-800 rounded-xl overflow-hidden">
-            {/* 스탯 스켈레톤 */}
-            <div className="px-4 py-3 flex gap-4">
-              {[0, 1, 2].map(i => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
-                  <div className="h-6 w-14 bg-gray-700 rounded animate-pulse" />
-                  <div className="h-3 w-10 bg-gray-700 rounded animate-pulse" />
-                </div>
-              ))}
-            </div>
-            {/* 인라인 슬라이딩 로딩바 */}
-            <div className="px-4 pb-3">
-              <div className="h-0.5 bg-gray-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-green-500 rounded-full"
-                  style={{ width: '35%', animation: 'loading-slide 1.4s ease-in-out infinite' }}
-                />
-              </div>
-            </div>
-            {/* 경로 요약 / 경로 구간 플레이스홀더 */}
-            <div className="border-t border-gray-700/40 px-3 py-2.5 flex items-center justify-between">
-              <div className="h-3 w-16 bg-gray-700 rounded animate-pulse" />
-              <div className="h-3 w-3 bg-gray-700 rounded animate-pulse" />
-            </div>
-            <div className="border-t border-gray-700/40 px-3 py-2.5 flex items-center justify-between">
-              <div className="h-3 w-16 bg-gray-700 rounded animate-pulse" />
-              <div className="h-3 w-3 bg-gray-700 rounded animate-pulse" />
-            </div>
+          <div className="bg-gray-800 rounded-xl py-8 flex flex-col items-center gap-3">
+            <div className="w-8 h-8 rounded-full border-2 border-gray-600 border-t-green-400 animate-spin" />
+            <span className="text-gray-400 text-sm">준비중입니다...</span>
           </div>
         ) : route ? (
           <>
