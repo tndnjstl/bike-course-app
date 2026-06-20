@@ -29,7 +29,7 @@ export default function ShareModal({ geometry, distance, duration, onClose }: Pr
   return (
     <div className="fixed inset-0 bg-black/70 flex items-end z-50" onClick={onClose}>
       <div
-        className="w-full bg-gray-900 rounded-t-2xl p-6"
+        className="w-full bg-gray-900 rounded-t-2xl p-6" style={{paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))'}}
         onClick={e => e.stopPropagation()}
         data-testid="share-modal"
       >

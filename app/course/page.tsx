@@ -874,7 +874,7 @@ export default function CoursePage() {
       {/* 검색 오버레이 */}
       {activeSlotId && (
         <div className="fixed inset-0 bg-gray-950 z-[2000] flex flex-col">
-          <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+          <div className="flex items-center gap-3 px-4 bg-gray-900 border-b border-gray-800 flex-shrink-0" style={{paddingTop: 'calc(0.75rem + env(safe-area-inset-top))', paddingBottom: '0.75rem'}}>
             <button onClick={closeSearch} className="text-gray-400 hover:text-white text-lg">←</button>
             <input
               ref={searchInputRef}
