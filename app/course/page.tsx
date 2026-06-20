@@ -9,6 +9,31 @@ import type { Coordinate, RouteResult, RouteStep } from '@/lib/osrm'
 import { saveCourse } from '@/lib/storage'
 import { fetchElevationProfile, calcElevationStats, type ElevationPoint } from '@/lib/elevation'
 import { classifyRoutePoints, type RoadType } from '@/lib/roadtype'
+import type { RouteSegment } from '@/components/KakaoMap'
+
+// roadTypes(30점) → 전체 geometry에 매핑해 색상 구간 분리
+function buildSegments(geometry: Coordinate[], roadTypes: RoadType[]): RouteSegment[] {
+  if (!geometry.length || !roadTypes.length) return []
+  const m = roadTypes.length
+  const segments: RouteSegment[] = []
+  let curType = roadTypes[0]
+  let curCoords: Coordinate[] = [geometry[0]]
+
+  for (let i = 1; i < geometry.length; i++) {
+    const idx = Math.min(Math.round((i / (geometry.length - 1)) * (m - 1)), m - 1)
+    const type = roadTypes[idx]
+    if (type !== curType) {
+      curCoords.push(geometry[i])
+      segments.push({ coords: curCoords, type: curType })
+      curType = type
+      curCoords = [geometry[i]]
+    } else {
+      curCoords.push(geometry[i])
+    }
+  }
+  if (curCoords.length > 1) segments.push({ coords: curCoords, type: curType })
+  return segments
+}
 
 const KakaoMap = dynamic(() => import('@/components/KakaoMap'), { ssr: false })
 const ElevationChart = dynamic(() => import('@/components/ElevationChart'), { ssr: false })
@@ -342,6 +367,7 @@ export default function CoursePage() {
         <KakaoMap
           waypoints={filledSlots.map(s => s.coord!)}
           routeGeometry={route?.geometry ?? []}
+          routeSegments={route && roadTypes ? buildSegments(route.geometry, roadTypes) : undefined}
         />
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40">

@@ -22,8 +22,8 @@ export interface RouteResult {
   legs: RouteLeg[]
 }
 
-// OSRM 공개 서버의 자전거 속도 계산이 부정확해서 15km/h 기준으로 직접 계산
-const BIKE_MPS = 15000 / 3600  // 15 km/h → m/s
+// OSRM 공개 서버의 자전거 속도 계산이 부정확해서 20km/h 기준으로 직접 계산 (카카오지도 기준)
+const BIKE_MPS = 20000 / 3600  // 20 km/h → m/s
 function realisticSecs(distanceM: number) {
   return Math.round(distanceM / BIKE_MPS)
 }
