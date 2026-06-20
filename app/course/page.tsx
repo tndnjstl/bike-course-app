@@ -96,6 +96,9 @@ export default function CoursePage() {
   const [searchResults, setSearchResults] = useState<Place[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
 
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastElevGeomKeyRef = useRef<string | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -199,6 +202,23 @@ export default function CoursePage() {
     setSaved(false)
   }, [runRoute])
 
+  const handleDragStart = (i: number) => setDragIndex(i)
+  const handleDragOver = (e: React.DragEvent, i: number) => { e.preventDefault(); setDragOverIndex(i) }
+  const handleDrop = (targetIndex: number) => {
+    if (dragIndex === null || dragIndex === targetIndex) { setDragIndex(null); setDragOverIndex(null); return }
+    setSlots(prev => {
+      const next = [...prev]
+      const [moved] = next.splice(dragIndex, 1)
+      next.splice(targetIndex, 0, moved)
+      runRoute(next)
+      return next
+    })
+    setSaved(false)
+    setDragIndex(null)
+    setDragOverIndex(null)
+  }
+  const handleDragEnd = () => { setDragIndex(null); setDragOverIndex(null) }
+
   const getGpsLocation = useCallback((slotId: string) => {
     if (!navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(
@@ -292,9 +312,19 @@ export default function CoursePage() {
             const isFirst = i === 0
             const isLast = i === slots.length - 1
             const isMiddle = !isFirst && !isLast
+            const isDragging = dragIndex === i
+            const isOver = dragOverIndex === i && dragIndex !== i
 
             return (
-              <div key={slot.id} className="flex items-stretch gap-3">
+              <div
+                key={slot.id}
+                draggable
+                onDragStart={() => handleDragStart(i)}
+                onDragOver={e => handleDragOver(e, i)}
+                onDrop={() => handleDrop(i)}
+                onDragEnd={handleDragEnd}
+                className={`flex items-stretch gap-3 transition-opacity ${isDragging ? 'opacity-40' : 'opacity-100'} ${isOver ? 'bg-gray-800/50 rounded-xl' : ''}`}
+              >
                 {/* 도트 + 연결선 */}
                 <div className="flex flex-col items-center flex-shrink-0 pt-3.5">
                   <div
@@ -356,6 +386,18 @@ export default function CoursePage() {
                       ×
                     </button>
                   )}
+
+                  {/* 드래그 핸들 */}
+                  <div className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-600 touch-none">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <circle cx="4" cy="3" r="1.2" fill="currentColor" />
+                      <circle cx="4" cy="7" r="1.2" fill="currentColor" />
+                      <circle cx="4" cy="11" r="1.2" fill="currentColor" />
+                      <circle cx="10" cy="3" r="1.2" fill="currentColor" />
+                      <circle cx="10" cy="7" r="1.2" fill="currentColor" />
+                      <circle cx="10" cy="11" r="1.2" fill="currentColor" />
+                    </svg>
+                  </div>
                 </div>
               </div>
             )
