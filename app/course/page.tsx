@@ -1,0 +1,540 @@
+'use client'
+
+import { useState, useCallback, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
+import Link from 'next/link'
+import ShareModal from '@/components/ShareModal'
+import { calcBikeRoute, formatDistance, formatDuration } from '@/lib/osrm'
+import type { Coordinate } from '@/lib/osrm'
+import { saveCourse } from '@/lib/storage'
+import { fetchElevationProfile, calcElevationStats, type ElevationPoint } from '@/lib/elevation'
+
+const KakaoMap = dynamic(() => import('@/components/KakaoMap'), { ssr: false })
+const ElevationChart = dynamic(() => import('@/components/ElevationChart'), { ssr: false })
+
+interface Place {
+  name: string
+  address: string
+  coord: Coordinate
+}
+
+interface Slot {
+  id: string
+  name: string
+  coord: Coordinate | null
+}
+
+let _id = 0
+const newSlot = (): Slot => ({ id: `s${++_id}`, name: '', coord: null })
+
+type CourseOption = 'bike' | 'flat' | 'shortest'
+
+const OPTION_LABELS: Record<CourseOption, string> = {
+  bike: '🚲 자전거도로',
+  flat: '🏞️ 평지 우선',
+  shortest: '⚡ 최단거리',
+}
+
+async function searchPlaces(q: string): Promise<Place[]> {
+  if (!q.trim()) return []
+  if (typeof window !== 'undefined' && (window as any).kakao?.maps?.services) {
+    return new Promise(resolve => {
+      const ps = new (window as any).kakao.maps.services.Places()
+      ps.keywordSearch(q, (data: any[], status: string) => {
+        if (status !== (window as any).kakao.maps.services.Status.OK) { resolve([]); return }
+        resolve(data.slice(0, 6).map((p: any) => ({
+          name: p.place_name,
+          address: p.road_address_name || p.address_name,
+          coord: { lat: parseFloat(p.y), lng: parseFloat(p.x) },
+        })))
+      })
+    })
+  }
+  const params = new URLSearchParams({ q, format: 'json', countrycodes: 'kr', limit: '6', 'accept-language': 'ko' })
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+    headers: { 'User-Agent': 'BikeCourseApp/1.0' },
+  })
+  const data = await res.json()
+  return data.map((item: any) => ({
+    name: item.name || item.display_name.split(',')[0],
+    address: item.display_name,
+    coord: { lat: parseFloat(item.lat), lng: parseFloat(item.lon) },
+  }))
+}
+
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ko`,
+      { headers: { 'User-Agent': 'BikeCourseApp/1.0' } }
+    )
+    const data = await res.json()
+    return data.name || data.display_name?.split(',')[0] || '현재 위치'
+  } catch {
+    return '현재 위치'
+  }
+}
+
+export default function CoursePage() {
+  const [slots, setSlots] = useState<Slot[]>([newSlot(), newSlot()])
+  const [option, setOption] = useState<CourseOption>('bike')
+  const [route, setRoute] = useState<{ geometry: Coordinate[]; distance: number; duration: number } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [showShare, setShowShare] = useState(false)
+
+  const [elevationPoints, setElevationPoints] = useState<ElevationPoint[] | null>(null)
+  const [elevLoading, setElevLoading] = useState(false)
+  const [elevError, setElevError] = useState(false)
+
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [saveName, setSaveName] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  // 검색 오버레이
+  const [activeSlotId, setActiveSlotId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<Place[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastElevGeomKeyRef = useRef<string | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // 경로가 바뀌면 고도 자동 로드
+  useEffect(() => {
+    if (!route?.geometry?.length) {
+      setElevationPoints(null)
+      lastElevGeomKeyRef.current = null
+      return
+    }
+    const g = route.geometry
+    const key = `${g[0].lat},${g[0].lng},${g[g.length - 1].lat},${g[g.length - 1].lng},${g.length}`
+    if (key === lastElevGeomKeyRef.current) return
+    lastElevGeomKeyRef.current = key
+    setElevLoading(true)
+    setElevError(false)
+    fetchElevationProfile(g)
+      .then(pts => setElevationPoints(pts))
+      .catch(() => setElevError(true))
+      .finally(() => setElevLoading(false))
+  }, [route])
+
+  // 검색창 열리면 포커스
+  useEffect(() => {
+    if (activeSlotId) {
+      setTimeout(() => searchInputRef.current?.focus(), 50)
+    }
+  }, [activeSlotId])
+
+  const runRoute = useCallback(async (updatedSlots: Slot[]) => {
+    const filled = updatedSlots.filter(s => s.coord !== null)
+    if (filled.length < 2) { setRoute(null); return }
+    setLoading(true)
+    setElevationPoints(null)
+    setElevError(false)
+    lastElevGeomKeyRef.current = null
+    const result = await calcBikeRoute(filled.map(s => s.coord!))
+    setRoute(result)
+    setLoading(false)
+  }, [])
+
+  const openSearch = (slotId: string) => {
+    setActiveSlotId(slotId)
+    setSearchQuery('')
+    setSearchResults([])
+  }
+
+  const closeSearch = () => {
+    setActiveSlotId(null)
+    setSearchQuery('')
+    setSearchResults([])
+  }
+
+  const handleSearchInput = (val: string) => {
+    setSearchQuery(val)
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    if (!val.trim()) { setSearchResults([]); return }
+    searchTimerRef.current = setTimeout(async () => {
+      setSearchLoading(true)
+      setSearchResults(await searchPlaces(val))
+      setSearchLoading(false)
+    }, 400)
+  }
+
+  const selectPlace = useCallback((place: Place) => {
+    if (!activeSlotId) return
+    setSlots(prev => {
+      const next = prev.map(s => s.id === activeSlotId ? { ...s, name: place.name, coord: place.coord } : s)
+      runRoute(next)
+      return next
+    })
+    setSaved(false)
+    closeSearch()
+  }, [activeSlotId, runRoute])
+
+  const clearSlot = useCallback((id: string) => {
+    setSlots(prev => {
+      const next = prev.map(s => s.id === id ? { ...s, name: '', coord: null } : s)
+      runRoute(next)
+      return next
+    })
+    setSaved(false)
+  }, [runRoute])
+
+  const addVia = () => {
+    setSlots(prev => {
+      const next = [...prev]
+      next.splice(prev.length - 1, 0, newSlot())
+      return next
+    })
+  }
+
+  const removeSlot = useCallback((id: string) => {
+    setSlots(prev => {
+      if (prev.length <= 2) return prev
+      const next = prev.filter(s => s.id !== id)
+      runRoute(next)
+      return next
+    })
+    setSaved(false)
+  }, [runRoute])
+
+  const getGpsLocation = useCallback((slotId: string) => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords
+        const name = await reverseGeocode(lat, lng)
+        setSlots(prev => {
+          const next = prev.map(s => s.id === slotId ? { ...s, name, coord: { lat, lng } } : s)
+          runRoute(next)
+          return next
+        })
+        setSaved(false)
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }, [runRoute])
+
+  const changeOption = async (opt: CourseOption) => {
+    setOption(opt)
+    const filled = slots.filter(s => s.coord !== null)
+    if (filled.length >= 2) {
+      setLoading(true)
+      setElevationPoints(null)
+      lastElevGeomKeyRef.current = null
+      const profile = opt === 'shortest' ? 'foot' : 'bike'
+      const { calcBikeRoute: calc } = await import('@/lib/osrm')
+      const result = await calc(filled.map(s => s.coord!), profile as any)
+      setRoute(result)
+      setLoading(false)
+    }
+  }
+
+  const confirmSave = () => {
+    if (!route) return
+    const filled = slots.filter(s => s.coord !== null)
+    saveCourse({
+      name: saveName || filled.map(s => s.name).join(' → '),
+      waypoints: filled.map(s => ({ name: s.name, coord: s.coord! })),
+      geometry: route.geometry,
+      distance: route.distance,
+      duration: route.duration,
+    })
+    setShowSaveDialog(false)
+    setSaved(true)
+  }
+
+  const elevStats = elevationPoints ? calcElevationStats(elevationPoints) : null
+  const filledSlots = slots.filter(s => s.coord !== null)
+
+  const dotColor = (i: number) => {
+    if (i === 0) return '#16a34a'
+    if (i === slots.length - 1) return '#dc2626'
+    return '#2563eb'
+  }
+
+  const slotLabel = (i: number) => {
+    if (i === 0) return '출발'
+    if (i === slots.length - 1) return '도착'
+    return `경유${i}`
+  }
+
+  return (
+    <div className="h-screen flex flex-col bg-gray-950">
+      {/* 헤더 */}
+      <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800">
+        <Link href="/" className="text-gray-400 hover:text-white text-lg">←</Link>
+        <h1 className="text-white font-bold">코스 설계</h1>
+        {saved && <span className="ml-auto text-green-400 text-xs">저장됨 ✓</span>}
+      </div>
+
+      {/* 지도 */}
+      <div className="flex-1 relative min-h-0">
+        <KakaoMap
+          waypoints={filledSlots.map(s => s.coord!)}
+          routeGeometry={route?.geometry ?? []}
+        />
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+            <div className="bg-gray-900 rounded-xl px-5 py-3 text-white text-sm">경로 계산 중...</div>
+          </div>
+        )}
+      </div>
+
+      {/* 하단 패널 */}
+      <div className="bg-gray-900 border-t border-gray-800 px-4 pt-4 pb-6 max-h-[55vh] overflow-y-auto">
+
+        {/* 출발/경유/도착 슬롯 */}
+        <div className="mb-2">
+          {slots.map((slot, i) => {
+            const isFirst = i === 0
+            const isLast = i === slots.length - 1
+            const isMiddle = !isFirst && !isLast
+
+            return (
+              <div key={slot.id} className="flex items-stretch gap-3">
+                {/* 도트 + 연결선 */}
+                <div className="flex flex-col items-center flex-shrink-0 pt-3.5">
+                  <div
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: dotColor(i) }}
+                  />
+                  {!isLast && (
+                    <div className="w-px flex-1 bg-gray-700 my-1" style={{ minHeight: 12 }} />
+                  )}
+                </div>
+
+                {/* 입력 행 */}
+                <div className={`flex-1 flex items-center gap-2 ${isLast ? '' : 'pb-1'}`}>
+                  <button
+                    onClick={() => openSearch(slot.id)}
+                    className="flex-1 flex items-center gap-2 bg-gray-800 hover:bg-gray-750 rounded-xl px-3 py-2.5 text-left min-w-0"
+                  >
+                    <span className="text-gray-500 text-xs flex-shrink-0 w-8">{slotLabel(i)}</span>
+                    <span className={`flex-1 text-sm truncate ${slot.name ? 'text-white' : 'text-gray-600'}`}>
+                      {slot.name || '장소 검색...'}
+                    </span>
+                  </button>
+
+                  {/* 출발 → GPS 버튼 */}
+                  {isFirst && (
+                    <button
+                      onClick={() => getGpsLocation(slot.id)}
+                      className="flex-shrink-0 w-9 h-9 bg-gray-800 hover:bg-gray-700 rounded-xl flex items-center justify-center"
+                      title="현재 위치"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 22 22" fill="none">
+                        <circle cx="11" cy="11" r="9" stroke="#9ca3af" strokeWidth="1.5" />
+                        <circle cx="11" cy="11" r="5" stroke="#9ca3af" strokeWidth="1.5" />
+                        <circle cx="11" cy="11" r="2.5" fill="#16a34a" />
+                        <line x1="11" y1="1" x2="11" y2="4" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" />
+                        <line x1="11" y1="18" x2="11" y2="21" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" />
+                        <line x1="1" y1="11" x2="4" y2="11" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" />
+                        <line x1="18" y1="11" x2="21" y2="11" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  )}
+
+                  {/* 경유지 → X 삭제 */}
+                  {isMiddle && (
+                    <button
+                      onClick={() => removeSlot(slot.id)}
+                      className="flex-shrink-0 w-9 h-9 bg-gray-800 hover:bg-gray-700 rounded-xl flex items-center justify-center text-gray-500 hover:text-red-400 text-lg"
+                    >
+                      ×
+                    </button>
+                  )}
+
+                  {/* 도착 → 입력됐으면 X */}
+                  {isLast && slot.coord && (
+                    <button
+                      onClick={() => clearSlot(slot.id)}
+                      className="flex-shrink-0 w-9 h-9 bg-gray-800 hover:bg-gray-700 rounded-xl flex items-center justify-center text-gray-500 hover:text-red-400 text-lg"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* 경유지 추가 */}
+        <button
+          onClick={addVia}
+          className="w-full border border-dashed border-gray-700 hover:border-green-600 rounded-xl text-gray-500 hover:text-green-400 text-sm py-2 mb-3 transition-colors"
+        >
+          + 경유지 추가
+        </button>
+
+        {/* 코스 옵션 */}
+        <div className="flex gap-2 overflow-x-auto pb-1 mb-3">
+          {(Object.keys(OPTION_LABELS) as CourseOption[]).map(opt => (
+            <button
+              key={opt}
+              onClick={() => changeOption(opt)}
+              data-testid={`option-${opt}`}
+              className={`flex-shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                option === opt
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              {OPTION_LABELS[opt]}
+            </button>
+          ))}
+        </div>
+
+        {/* 코스 결과 */}
+        {route && (
+          <>
+            <div data-testid="route-result" className="bg-gray-800 rounded-xl px-4 py-3">
+              <div className="flex gap-4">
+                <div className="text-center flex-1">
+                  <div className="text-green-400 font-bold">{formatDistance(route.distance)}</div>
+                  <div className="text-gray-500 text-xs">거리</div>
+                </div>
+                <div className="w-px bg-gray-700" />
+                <div className="text-center flex-1">
+                  <div className="text-green-400 font-bold">{formatDuration(route.duration)}</div>
+                  <div className="text-gray-500 text-xs">예상시간</div>
+                </div>
+                {elevStats && (
+                  <>
+                    <div className="w-px bg-gray-700" />
+                    <div className="text-center flex-1">
+                      <div className="text-green-400 font-bold">↑{elevStats.totalAscent}m</div>
+                      <div className="text-gray-500 text-xs">총 오르막</div>
+                    </div>
+                  </>
+                )}
+              </div>
+              {elevLoading && (
+                <div className="mt-3 text-center text-xs text-gray-500">고도 데이터 로딩 중...</div>
+              )}
+              {elevError && (
+                <div className="mt-3 text-center text-xs text-red-500">고도 데이터를 불러올 수 없어요</div>
+              )}
+            </div>
+
+            {elevationPoints && <ElevationChart points={elevationPoints} />}
+          </>
+        )}
+
+        {/* 버튼 행 */}
+        <div className="mt-4 flex gap-3">
+          <button
+            onClick={() => {
+              if (!route) return
+              setSaveName(filledSlots.map(s => s.name).join(' → '))
+              setShowSaveDialog(true)
+            }}
+            disabled={!route}
+            data-testid="btn-save"
+            className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-900 disabled:text-gray-700 text-gray-300 text-sm font-medium rounded-xl transition-colors"
+          >
+            💾 코스 저장
+          </button>
+          <button
+            onClick={() => setShowShare(true)}
+            disabled={!route}
+            data-testid="btn-start-guide"
+            className="flex-1 py-3 bg-green-600 hover:bg-green-500 disabled:bg-gray-800 disabled:text-gray-600 text-white font-bold rounded-xl transition-colors"
+          >
+            {route ? '안내 시작 →' : '경유지 2개 이상'}
+          </button>
+        </div>
+      </div>
+
+      {/* 검색 오버레이 */}
+      {activeSlotId && (
+        <div className="fixed inset-0 bg-gray-950 z-[2000] flex flex-col">
+          <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+            <button onClick={closeSearch} className="text-gray-400 hover:text-white text-lg">←</button>
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={e => handleSearchInput(e.target.value)}
+              placeholder="장소 검색..."
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-green-500"
+            />
+            {searchLoading && <span className="text-gray-500 text-xs flex-shrink-0">검색 중</span>}
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {searchResults.length > 0 ? (
+              <ul>
+                {searchResults.map((r, i) => (
+                  <li
+                    key={i}
+                    onClick={() => selectPlace(r)}
+                    className="px-4 py-4 hover:bg-gray-800 cursor-pointer border-b border-gray-800 last:border-0"
+                  >
+                    <div className="text-white text-sm font-medium">{r.name}</div>
+                    <div className="text-gray-500 text-xs mt-0.5 truncate">{r.address}</div>
+                  </li>
+                ))}
+              </ul>
+            ) : searchQuery && !searchLoading ? (
+              <div className="text-center text-gray-600 text-sm py-12">검색 결과가 없습니다</div>
+            ) : (
+              <div className="text-center text-gray-600 text-sm py-12">장소 이름을 입력하세요</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 공유 모달 */}
+      {showShare && route && (
+        <ShareModal
+          geometry={route.geometry}
+          distance={route.distance}
+          duration={route.duration}
+          onClose={() => setShowShare(false)}
+        />
+      )}
+
+      {/* 저장 다이얼로그 */}
+      {showSaveDialog && (
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+          onClick={() => setShowSaveDialog(false)}
+        >
+          <div
+            className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm"
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 className="text-white font-bold mb-4">코스 저장</h2>
+            <input
+              type="text"
+              value={saveName}
+              onChange={e => setSaveName(e.target.value)}
+              placeholder="코스 이름"
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-green-500 mb-4"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowSaveDialog(false)}
+                className="flex-1 py-3 bg-gray-800 text-gray-400 rounded-xl text-sm"
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmSave}
+                data-testid="btn-confirm-save"
+                className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl text-sm"
+              >
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
