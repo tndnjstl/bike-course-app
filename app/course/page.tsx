@@ -10,6 +10,7 @@ import { saveCourse } from '@/lib/storage'
 import { fetchElevationProfile, calcElevationStats, type ElevationPoint } from '@/lib/elevation'
 import { classifyRoutePoints, type RoadType } from '@/lib/roadtype'
 import type { RouteSegment } from '@/components/KakaoMap'
+import { Geolocation } from '@capacitor/geolocation'
 
 const ROUTE_HISTORY_KEY = 'bike-route-history'
 
@@ -454,22 +455,18 @@ export default function CoursePage() {
   }
   const handleDragEnd = () => { setDragIndex(null); setDragOverIndex(null) }
 
-  const getGpsLocation = useCallback((slotId: string) => {
-    if (!navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude: lat, longitude: lng } = pos.coords
-        const name = await reverseGeocode(lat, lng)
-        setSlots(prev => {
-          const next = prev.map(s => s.id === slotId ? { ...s, name, coord: { lat, lng } } : s)
-          runRoute(next)
-          return next
-        })
-        setSaved(false)
-      },
-      () => {},
-      { enableHighAccuracy: true, timeout: 10000 }
-    )
+  const getGpsLocation = useCallback(async (slotId: string) => {
+    try {
+      const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 })
+      const { latitude: lat, longitude: lng } = pos.coords
+      const name = await reverseGeocode(lat, lng)
+      setSlots(prev => {
+        const next = prev.map(s => s.id === slotId ? { ...s, name, coord: { lat, lng } } : s)
+        runRoute(next)
+        return next
+      })
+      setSaved(false)
+    } catch {}
   }, [runRoute])
 
   const loadRoute = useCallback((item: RouteHistoryItem) => {
