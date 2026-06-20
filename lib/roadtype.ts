@@ -8,8 +8,23 @@ function sampleGeometry(coords: Coordinate[], max: number): Coordinate[] {
   return Array.from({ length: max }, (_, i) => coords[Math.round(i * step)])
 }
 
-// Overpass에서 경로 bbox 안의 자전거 전용 도로 노드를 가져와서
-// 각 샘플 포인트가 자전거도로 위에 있는지 판별 (20m 이내)
+// 점 pt에서 선분 a→b 까지의 거리(m) 계산
+function distToSegment(pt: Coordinate, a: Coordinate, b: Coordinate): number {
+  const cosLat = Math.cos(pt.lat * Math.PI / 180)
+  const px = (pt.lng - a.lng) * 111320 * cosLat
+  const py = (pt.lat - a.lat) * 111320
+  const bx = (b.lng - a.lng) * 111320 * cosLat
+  const by = (b.lat - a.lat) * 111320
+  const len2 = bx * bx + by * by
+  if (len2 === 0) return Math.sqrt(px * px + py * py)
+  const t = Math.max(0, Math.min(1, (px * bx + py * by) / len2))
+  const dx = px - t * bx
+  const dy = py - t * by
+  return Math.sqrt(dx * dx + dy * dy)
+}
+
+// Overpass에서 경로 bbox 안의 자전거 도로 way를 가져와서
+// 각 샘플 포인트가 자전거도로 세그먼트 25m 이내인지 판별
 export async function classifyRoutePoints(
   geometry: Coordinate[],
   sampleCount = 30
@@ -19,21 +34,24 @@ export async function classifyRoutePoints(
 
   const lats = sampled.map(p => p.lat)
   const lngs = sampled.map(p => p.lng)
-  const south = (Math.min(...lats) - 0.002).toFixed(6)
-  const north = (Math.max(...lats) + 0.002).toFixed(6)
-  const west  = (Math.min(...lngs) - 0.002).toFixed(6)
-  const east  = (Math.max(...lngs) + 0.002).toFixed(6)
+  const south = (Math.min(...lats) - 0.003).toFixed(6)
+  const north = (Math.max(...lats) + 0.003).toFixed(6)
+  const west  = (Math.min(...lngs) - 0.003).toFixed(6)
+  const east  = (Math.max(...lngs) + 0.003).toFixed(6)
   const bbox  = `${south},${west},${north},${east}`
 
-  // 자전거 전용/지정 도로 쿼리 (cycleway, path with bicycle=designated, 자전거 차선 등)
-  const query = `[out:json][timeout:15];(
+  const query = `[out:json][timeout:20];(
     way["highway"="cycleway"](${bbox});
-    way["highway"="path"]["bicycle"="designated"](${bbox});
-    way["highway"="track"]["bicycle"="yes"](${bbox});
-    way["highway"="footway"]["bicycle"="yes"](${bbox});
-    way["cycleway"~"(lane|track|yes)"](${bbox});
-    way["cycleway:left"~"(lane|track)"](${bbox});
-    way["cycleway:right"~"(lane|track)"](${bbox});
+    way["highway"="path"]["bicycle"~"^(yes|designated)$"](${bbox});
+    way["highway"="track"]["bicycle"~"^(yes|designated)$"](${bbox});
+    way["highway"="footway"]["bicycle"~"^(yes|designated)$"](${bbox});
+    way["highway"="residential"]["cycleway"~"."](${bbox});
+    way["highway"="secondary"]["cycleway"~"."](${bbox});
+    way["highway"="tertiary"]["cycleway"~"."](${bbox});
+    way["cycleway"~"^(lane|track|yes|shared_lane)$"](${bbox});
+    way["cycleway:left"~"^(lane|track)$"](${bbox});
+    way["cycleway:right"~"^(lane|track)$"](${bbox});
+    way["bicycle"="designated"](${bbox});
   );out geom;`
 
   try {
@@ -41,29 +59,27 @@ export async function classifyRoutePoints(
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: query,
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(20000),
     })
     if (!res.ok) throw new Error(`overpass ${res.status}`)
     const data = await res.json()
 
-    // 자전거도로의 모든 노드 좌표 수집
-    const bikeNodes: Coordinate[] = []
+    // 자전거도로의 모든 세그먼트(선분) 수집
+    type Seg = [Coordinate, Coordinate]
+    const bikeSegs: Seg[] = []
     for (const el of data.elements ?? []) {
-      for (const nd of el.geometry ?? []) {
-        bikeNodes.push({ lat: nd.lat, lng: nd.lon })
+      const geom: Coordinate[] = (el.geometry ?? []).map((nd: any) => ({ lat: nd.lat, lng: nd.lon }))
+      for (let i = 0; i < geom.length - 1; i++) {
+        bikeSegs.push([geom[i], geom[i + 1]])
       }
     }
 
-    if (!bikeNodes.length) return sampled.map(() => 'road')
+    if (!bikeSegs.length) return sampled.map(() => 'road')
 
-    // 각 샘플 포인트에서 20m 이내에 자전거도로 노드가 있으면 'bike'
+    const THRESHOLD = 25 // meters — 노드 간격이 넓어도 선분 기준으로 정확하게 판별
+
     return sampled.map(pt => {
-      const cosLat = Math.cos(pt.lat * Math.PI / 180)
-      const near = bikeNodes.some(bn => {
-        const dy = (bn.lat - pt.lat) * 111320
-        const dx = (bn.lng - pt.lng) * 111320 * cosLat
-        return dx * dx + dy * dy < 400  // 20m²
-      })
+      const near = bikeSegs.some(([a, b]) => distToSegment(pt, a, b) < THRESHOLD)
       return near ? 'bike' : 'road'
     })
   } catch {
