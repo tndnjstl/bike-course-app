@@ -9,11 +9,23 @@ export interface RouteStep {
   mode: string   // 'cycling' | 'pushing bike' | 'ferry' | ...
 }
 
+export interface RouteLeg {
+  distance: number  // meters
+  duration: number  // seconds (realistic cycling time)
+}
+
 export interface RouteResult {
   distance: number   // meters
-  duration: number   // seconds
+  duration: number   // seconds (realistic cycling time)
   geometry: Coordinate[]
   steps: RouteStep[]
+  legs: RouteLeg[]
+}
+
+// OSRM 공개 서버의 자전거 속도 계산이 부정확해서 15km/h 기준으로 직접 계산
+const BIKE_MPS = 15000 / 3600  // 15 km/h → m/s
+function realisticSecs(distanceM: number) {
+  return Math.round(distanceM / BIKE_MPS)
 }
 
 export function guessStepType(step: RouteStep): 'bike' | 'road' | 'push' {
@@ -62,7 +74,18 @@ export async function calcBikeRoute(
       }
     }
 
-    return { distance: route.distance, duration: route.duration, geometry, steps }
+    const legs: RouteLeg[] = (route.legs ?? []).map((leg: any) => ({
+      distance: leg.distance,
+      duration: realisticSecs(leg.distance),
+    }))
+
+    return {
+      distance: route.distance,
+      duration: realisticSecs(route.distance),
+      geometry,
+      steps,
+      legs,
+    }
   } catch {
     return null
   }
@@ -90,11 +113,16 @@ export async function calcBikeRouteAlternatives(
           steps.push({ name: step.name || '', distance: step.distance, mode: step.mode || 'cycling' })
         }
       }
+      const legs: RouteLeg[] = (route.legs ?? []).map((leg: any) => ({
+        distance: leg.distance,
+        duration: realisticSecs(leg.distance),
+      }))
       return {
         distance: route.distance,
-        duration: route.duration,
+        duration: realisticSecs(route.distance),
         geometry: route.geometry.coordinates.map(([lng, lat]: [number, number]) => ({ lat, lng })),
         steps,
+        legs,
       }
     })
   } catch {

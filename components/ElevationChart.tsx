@@ -7,6 +7,7 @@ import type { RoadType } from '@/lib/roadtype'
 interface Props {
   points: ElevationPoint[]
   roadTypes?: RoadType[]
+  waypointDists?: number[]  // 경유지가 위치한 누적 거리(m) 배열 (출발=0 제외, 도착 포함)
 }
 
 const COLOR: Record<RoadType, string> = {
@@ -14,7 +15,7 @@ const COLOR: Record<RoadType, string> = {
   road: '#6b7280',
 }
 
-export default function ElevationChart({ points, roadTypes }: Props) {
+export default function ElevationChart({ points, roadTypes, waypointDists }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [chartW, setChartW] = useState(320)
 
@@ -65,7 +66,7 @@ export default function ElevationChart({ points, roadTypes }: Props) {
   return (
     <div ref={containerRef} className="bg-gray-800 rounded-xl px-3 pt-3 pb-2 mt-3">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-gray-400 text-xs font-medium">고도 프로필</span>
+        <span className="text-gray-400 text-xs font-medium">경로 요약</span>
         {roadTypes && (
           <div className="flex gap-3">
             {hasBike && (
@@ -103,6 +104,20 @@ export default function ElevationChart({ points, roadTypes }: Props) {
           const trapezoid = `M${x1.toFixed(1)},${bottomY.toFixed(1)} L${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)} L${x2.toFixed(1)},${bottomY.toFixed(1)}Z`
           return (
             <path key={i} d={trapezoid} fill={color} opacity="0.35" clipPath="url(#chartArea)" />
+          )
+        })}
+
+        {/* 경유지 세로 마커 */}
+        {waypointDists?.map((dist, i) => {
+          const x = toX(dist)
+          if (x <= PAD.left || x >= PAD.left + innerW) return null
+          const isLast = i === (waypointDists.length - 1)
+          const label = isLast ? '도착' : `경유${i + 1}`
+          return (
+            <g key={i}>
+              <line x1={x} y1={PAD.top} x2={x} y2={bottomY} stroke="#9ca3af" strokeWidth="1" strokeDasharray="3,2" opacity="0.6" />
+              <text x={x + 3} y={PAD.top + 9} fill="#9ca3af" fontSize="8">{label}</text>
+            </g>
           )
         })}
 

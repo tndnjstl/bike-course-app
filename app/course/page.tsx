@@ -523,20 +523,52 @@ export default function CoursePage() {
                   </>
                 ) : null}
               </div>
+              {/* 구간별 거리 (경유지 있을 때) */}
+              {route.legs.length > 1 && (
+                <div className="flex gap-2 mt-2.5 flex-wrap">
+                  {route.legs.map((leg, i) => {
+                    const labels = slots.filter(s => s.coord !== null).map((s, idx) =>
+                      idx === 0 ? '출발' : idx === filledSlots.length - 1 ? '도착' : `경유${idx}`
+                    )
+                    return (
+                      <div key={i} className="flex items-center gap-1 text-xs">
+                        <span className="text-gray-500">{labels[i] ?? `경유${i}`}</span>
+                        <span className="text-gray-600">→</span>
+                        <span className="text-gray-500">{labels[i + 1] ?? '도착'}</span>
+                        <span className="text-white font-medium ml-1">{formatDistance(leg.distance)}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
               {elevError && (
                 <div className="mt-3 text-center text-xs text-red-500">고도 데이터를 불러올 수 없어요</div>
               )}
             </div>
 
             {/* 고도 차트: 로딩 중엔 스켈레톤 */}
-            {elevLoading ? (
-              <div className="bg-gray-800 rounded-xl px-3 pt-3 pb-2 mt-3 animate-pulse">
-                <div className="h-3 w-20 bg-gray-700 rounded mb-3" />
-                <div className="h-[110px] bg-gray-700 rounded" />
-              </div>
-            ) : elevationPoints ? (
-              <ElevationChart points={elevationPoints} roadTypes={roadTypes ?? undefined} />
-            ) : null}
+            {(() => {
+              // 경유지 누적 거리 계산 (경유1, 경유2, ..., 도착)
+              const waypointDists = route.legs.length > 1
+                ? route.legs.reduce<number[]>((acc, leg, i) => {
+                    const prev = acc[i - 1] ?? 0
+                    acc.push(prev + leg.distance)
+                    return acc
+                  }, [])
+                : undefined
+              return elevLoading ? (
+                <div className="bg-gray-800 rounded-xl px-3 pt-3 pb-2 mt-3 animate-pulse">
+                  <div className="h-3 w-20 bg-gray-700 rounded mb-3" />
+                  <div className="h-[110px] bg-gray-700 rounded" />
+                </div>
+              ) : elevationPoints ? (
+                <ElevationChart
+                  points={elevationPoints}
+                  roadTypes={roadTypes ?? undefined}
+                  waypointDists={waypointDists}
+                />
+              ) : null
+            })()}
 
             {route.steps.length > 0 && <RouteSegmentList steps={route.steps} />}
           </>
