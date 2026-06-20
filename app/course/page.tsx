@@ -478,7 +478,21 @@ export default function CoursePage() {
         </div>
 
         {/* 코스 결과 */}
-        {route && (
+        {loading && (
+          /* 경로 계산 중 스켈레톤 */
+          <div className="bg-gray-800 rounded-xl px-4 py-3 animate-pulse">
+            <div className="flex gap-4">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
+                  <div className="h-6 w-14 bg-gray-700 rounded" />
+                  <div className="h-3 w-10 bg-gray-700 rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {route && !loading && (
           <>
             <div data-testid="route-result" className="bg-gray-800 rounded-xl px-4 py-3">
               <div className="flex gap-4">
@@ -491,7 +505,15 @@ export default function CoursePage() {
                   <div className="text-green-400 font-bold">{formatDuration(route.duration)}</div>
                   <div className="text-gray-500 text-xs">예상시간</div>
                 </div>
-                {elevStats && (
+                {elevLoading ? (
+                  <>
+                    <div className="w-px bg-gray-700" />
+                    <div className="flex-1 flex flex-col items-center gap-1.5 animate-pulse">
+                      <div className="h-5 w-12 bg-gray-700 rounded" />
+                      <div className="h-3 w-10 bg-gray-700 rounded" />
+                    </div>
+                  </>
+                ) : elevStats ? (
                   <>
                     <div className="w-px bg-gray-700" />
                     <div className="text-center flex-1">
@@ -499,17 +521,23 @@ export default function CoursePage() {
                       <div className="text-gray-500 text-xs">총 오르막</div>
                     </div>
                   </>
-                )}
+                ) : null}
               </div>
-              {elevLoading && (
-                <div className="mt-3 text-center text-xs text-gray-500">고도 데이터 로딩 중...</div>
-              )}
               {elevError && (
                 <div className="mt-3 text-center text-xs text-red-500">고도 데이터를 불러올 수 없어요</div>
               )}
             </div>
 
-            {elevationPoints && <ElevationChart points={elevationPoints} roadTypes={roadTypes ?? undefined} />}
+            {/* 고도 차트: 로딩 중엔 스켈레톤 */}
+            {elevLoading ? (
+              <div className="bg-gray-800 rounded-xl px-3 pt-3 pb-2 mt-3 animate-pulse">
+                <div className="h-3 w-20 bg-gray-700 rounded mb-3" />
+                <div className="h-[110px] bg-gray-700 rounded" />
+              </div>
+            ) : elevationPoints ? (
+              <ElevationChart points={elevationPoints} roadTypes={roadTypes ?? undefined} />
+            ) : null}
+
             {route.steps.length > 0 && <RouteSegmentList steps={route.steps} />}
           </>
         )}
