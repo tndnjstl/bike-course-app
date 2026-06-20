@@ -497,7 +497,7 @@ export default function CoursePage() {
               )}
             </div>
 
-            {elevationPoints && <ElevationChart points={elevationPoints} />}
+            {elevationPoints && <ElevationChart points={elevationPoints} steps={route.steps} />}
             {route.steps.length > 0 && <RouteSegmentList steps={route.steps} />}
           </>
         )}
