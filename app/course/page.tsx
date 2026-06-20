@@ -11,6 +11,37 @@ import { fetchElevationProfile, calcElevationStats, type ElevationPoint } from '
 import { classifyRoutePoints, type RoadType } from '@/lib/roadtype'
 import type { RouteSegment } from '@/components/KakaoMap'
 
+const ROUTE_HISTORY_KEY = 'bike-route-history'
+
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null
+  const row = document.cookie.split('; ').find(r => r.startsWith(name + '='))
+  return row ? decodeURIComponent(row.split('=')[1]) : null
+}
+
+function setCookie(name: string, value: string) {
+  const maxAge = 60 * 60 * 24 * 90 // 90일
+  document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAge}; path=/; SameSite=Lax`
+}
+
+function readRouteHistory<T>(): T[] {
+  try {
+    const ls = localStorage.getItem(ROUTE_HISTORY_KEY)
+    if (ls) return JSON.parse(ls)
+  } catch {}
+  try {
+    const ck = getCookie(ROUTE_HISTORY_KEY)
+    if (ck) return JSON.parse(ck)
+  } catch {}
+  return []
+}
+
+function writeRouteHistory<T>(data: T[]) {
+  const json = JSON.stringify(data)
+  try { localStorage.setItem(ROUTE_HISTORY_KEY, json) } catch {}
+  try { setCookie(ROUTE_HISTORY_KEY, json) } catch {}
+}
+
 // roadTypes(30점) → 전체 geometry에 매핑해 색상 구간 분리
 function buildSegments(geometry: Coordinate[], roadTypes: RoadType[]): RouteSegment[] {
   if (!geometry.length || !roadTypes.length) return []
@@ -196,7 +227,7 @@ export default function CoursePage() {
 
   const [routeHistory, setRouteHistory] = useState<RouteHistoryItem[]>(() => {
     if (typeof window === 'undefined') return []
-    try { return JSON.parse(localStorage.getItem('bike-route-history') ?? '[]') } catch { return [] }
+    return readRouteHistory<RouteHistoryItem>()
   })
 
   const [panelFrac, setPanelFrac] = useState(0.50)
@@ -300,7 +331,7 @@ export default function CoursePage() {
       const key = item.waypoints.map(w => w.name).join('|')
       const filtered = prev.filter(h => h.waypoints.map(w => w.name).join('|') !== key)
       const next = [item, ...filtered].slice(0, 5)
-      try { localStorage.setItem('bike-route-history', JSON.stringify(next)) } catch {}
+      writeRouteHistory(next)
       return next
     })
   }, [])
@@ -308,7 +339,7 @@ export default function CoursePage() {
   const removeFromRouteHistory = useCallback((id: string) => {
     setRouteHistory(prev => {
       const next = prev.filter(h => h.id !== id)
-      try { localStorage.setItem('bike-route-history', JSON.stringify(next)) } catch {}
+      writeRouteHistory(next)
       return next
     })
   }, [])
