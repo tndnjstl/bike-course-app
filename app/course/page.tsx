@@ -158,6 +158,12 @@ export default function CoursePage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Place[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
+  const [searchHistory, setSearchHistory] = useState<Place[]>(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      return JSON.parse(localStorage.getItem('bike-search-history') ?? '[]')
+    } catch { return [] }
+  })
 
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
@@ -213,6 +219,23 @@ export default function CoursePage() {
     setLoading(false)
   }, [])
 
+  const saveToHistory = useCallback((place: Place) => {
+    setSearchHistory(prev => {
+      const filtered = prev.filter(p => p.name !== place.name)
+      const next = [place, ...filtered].slice(0, 10)
+      try { localStorage.setItem('bike-search-history', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }, [])
+
+  const removeFromHistory = useCallback((name: string) => {
+    setSearchHistory(prev => {
+      const next = prev.filter(p => p.name !== name)
+      try { localStorage.setItem('bike-search-history', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }, [])
+
   const openSearch = (slotId: string) => {
     setActiveSlotId(slotId)
     setSearchQuery('')
@@ -243,9 +266,10 @@ export default function CoursePage() {
       runRoute(next)
       return next
     })
+    saveToHistory(place)
     setSaved(false)
     closeSearch()
-  }, [activeSlotId, runRoute])
+  }, [activeSlotId, runRoute, saveToHistory])
 
   const clearSlot = useCallback((id: string) => {
     setSlots(prev => {
@@ -643,23 +667,60 @@ export default function CoursePage() {
 
           <div className="flex-1 overflow-y-auto">
             {searchResults.length > 0 ? (
+              /* 검색 결과 */
               <ul>
                 {searchResults.map((r, i) => (
                   <li
                     key={i}
                     onClick={() => selectPlace(r)}
-                    className="px-4 py-4 hover:bg-gray-800 cursor-pointer border-b border-gray-800 last:border-0"
+                    className="flex items-center gap-3 px-4 py-4 hover:bg-gray-800/60 cursor-pointer border-b border-gray-800 last:border-0"
                   >
-                    <div className="text-white text-sm font-medium">{r.name}</div>
-                    <div className="text-gray-500 text-xs mt-0.5 truncate">{r.address}</div>
+                    <svg className="flex-shrink-0 text-gray-500" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white text-sm font-medium">{r.name}</div>
+                      <div className="text-gray-500 text-xs mt-0.5 truncate">{r.address}</div>
+                    </div>
                   </li>
                 ))}
               </ul>
             ) : searchQuery && !searchLoading ? (
               <div className="text-center text-gray-600 text-sm py-12">검색 결과가 없습니다</div>
-            ) : (
-              <div className="text-center text-gray-600 text-sm py-12">장소 이름을 입력하세요</div>
-            )}
+            ) : !searchQuery ? (
+              /* 히스토리 */
+              searchHistory.length > 0 ? (
+                <>
+                  <div className="px-4 pt-4 pb-2 text-gray-500 text-xs font-medium">히스토리</div>
+                  <ul>
+                    {searchHistory.map((h, i) => (
+                      <li
+                        key={i}
+                        className="flex items-center gap-3 px-4 py-3.5 hover:bg-gray-800/60 border-b border-gray-800 last:border-0"
+                      >
+                        <svg className="flex-shrink-0 text-gray-500" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                        </svg>
+                        <span
+                          className="flex-1 text-white text-sm cursor-pointer"
+                          onClick={() => selectPlace(h)}
+                        >
+                          {h.name}
+                        </span>
+                        <button
+                          onClick={e => { e.stopPropagation(); removeFromHistory(h.name) }}
+                          className="flex-shrink-0 text-gray-600 hover:text-gray-300 text-lg leading-none px-1"
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <div className="text-center text-gray-600 text-sm py-12">장소 이름을 입력하세요</div>
+              )
+            ) : null}
           </div>
         </div>
       )}
