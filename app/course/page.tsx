@@ -64,6 +64,11 @@ const OPTION_LABELS: Record<CourseOption, string> = {
 const HANDLE_H = 28
 const SNAP_FRACS = [0.15, 0.50, 0.85]
 
+interface RouteHistoryItem {
+  id: string
+  waypoints: Array<{ name: string; coord: Coordinate }>
+}
+
 async function searchPlaces(q: string): Promise<Place[]> {
   if (!q.trim()) return []
   if (typeof window !== 'undefined' && (window as any).kakao?.maps?.services) {
@@ -189,6 +194,11 @@ export default function CoursePage() {
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
+  const [routeHistory, setRouteHistory] = useState<RouteHistoryItem[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem('bike-route-history') ?? '[]') } catch { return [] }
+  })
+
   const [panelFrac, setPanelFrac] = useState(0.50)
   const [bodyH, setBodyH] = useState(0)
 
@@ -280,6 +290,29 @@ export default function CoursePage() {
     }
   }, [bodyH])
 
+  const saveToRouteHistory = useCallback((filledSlots: Slot[]) => {
+    if (filledSlots.length < 2) return
+    const item: RouteHistoryItem = {
+      id: Date.now().toString(),
+      waypoints: filledSlots.map(s => ({ name: s.name, coord: s.coord! })),
+    }
+    setRouteHistory(prev => {
+      const key = item.waypoints.map(w => w.name).join('|')
+      const filtered = prev.filter(h => h.waypoints.map(w => w.name).join('|') !== key)
+      const next = [item, ...filtered].slice(0, 5)
+      try { localStorage.setItem('bike-route-history', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }, [])
+
+  const removeFromRouteHistory = useCallback((id: string) => {
+    setRouteHistory(prev => {
+      const next = prev.filter(h => h.id !== id)
+      try { localStorage.setItem('bike-route-history', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }, [])
+
   const runRoute = useCallback(async (updatedSlots: Slot[]) => {
     const filled = updatedSlots.filter(s => s.coord !== null)
     if (filled.length < 2) { setRoute(null); return }
@@ -291,7 +324,8 @@ export default function CoursePage() {
     const result = await calcBikeRoute(filled.map(s => s.coord!))
     setRoute(result)
     setLoading(false)
-  }, [])
+    if (result) saveToRouteHistory(filled)
+  }, [saveToRouteHistory])
 
   const saveToHistory = useCallback((place: Place) => {
     setSearchHistory(prev => {
@@ -407,6 +441,17 @@ export default function CoursePage() {
     )
   }, [runRoute])
 
+  const loadRoute = useCallback((item: RouteHistoryItem) => {
+    const newSlots: Slot[] = item.waypoints.map(wp => ({
+      id: `s${++_id}`,
+      name: wp.name,
+      coord: wp.coord,
+    }))
+    setSlots(newSlots)
+    runRoute(newSlots)
+    setSaved(false)
+  }, [runRoute])
+
   const changeOption = async (opt: CourseOption) => {
     setOption(opt)
     const filled = slots.filter(s => s.coord !== null)
@@ -419,6 +464,7 @@ export default function CoursePage() {
       const result = await calcBikeRoute(filled.map(s => s.coord!), profile)
       setRoute(result)
       setLoading(false)
+      if (result) saveToRouteHistory(filled)
     }
   }
 
@@ -626,7 +672,57 @@ export default function CoursePage() {
           ))}
         </div>
 
-        {/* 코스 결과 */}
+        {/* 최근 길찾기 */}
+        {!route && !loading && routeHistory.length > 0 && (
+          <div className="mb-3">
+            <div className="text-gray-500 text-xs font-medium mb-2 px-1">최근 길찾기</div>
+            <div className="flex flex-col gap-2">
+              {routeHistory.map(item => (
+                <div
+                  key={item.id}
+                  className="bg-gray-800 rounded-xl px-3 py-3 flex items-start gap-3"
+                >
+                  {/* 자전거 아이콘 */}
+                  <div className="flex-shrink-0 w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center mt-0.5">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/>
+                      <path d="M15 6h-3l-2 5.5M5.5 17.5l3-6.5h5l3 6.5"/>
+                      <path d="M15 6l2 5.5"/>
+                    </svg>
+                  </div>
+                  {/* 경유지 목록 */}
+                  <button
+                    className="flex-1 min-w-0 text-left"
+                    onClick={() => loadRoute(item)}
+                  >
+                    {item.waypoints.map((wp, wi) => {
+                      const isFirst = wi === 0
+                      const isLast = wi === item.waypoints.length - 1
+                      const dotColor = isFirst ? '#16a34a' : isLast ? '#dc2626' : '#2563eb'
+                      return (
+                        <div key={wi} className="flex items-center gap-2 min-w-0">
+                          <div className="flex flex-col items-center flex-shrink-0" style={{ width: 10 }}>
+                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dotColor }} />
+                            {!isLast && <div className="w-px flex-1 bg-gray-600 my-0.5" style={{ minHeight: 8 }} />}
+                          </div>
+                          <span className="text-gray-300 text-xs truncate">{wp.name}</span>
+                        </div>
+                      )
+                    })}
+                  </button>
+                  {/* 삭제 */}
+                  <button
+                    onClick={() => removeFromRouteHistory(item.id)}
+                    className="flex-shrink-0 text-gray-600 hover:text-gray-300 text-lg leading-none self-center px-1"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 코스 결과: 로딩 중엔 스피너 카드, 완료 시 실제 데이터 */}
         {(loading || elevLoading) ? (
           <div className="bg-gray-800 rounded-xl py-8 flex flex-col items-center gap-3">
