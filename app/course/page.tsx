@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import ShareModal from '@/components/ShareModal'
 import { calcBikeRoute, formatDistance, formatDuration, guessStepType } from '@/lib/osrm'
 import type { Coordinate, RouteResult, RouteStep } from '@/lib/osrm'
 import { saveCourse } from '@/lib/storage'
@@ -69,6 +68,7 @@ function buildSegments(geometry: Coordinate[], roadTypes: RoadType[]): RouteSegm
 
 const KakaoMap = dynamic(() => import('@/components/KakaoMap'), { ssr: false })
 const ElevationChart = dynamic(() => import('@/components/ElevationChart'), { ssr: false })
+const RidingScreen = dynamic(() => import('@/components/RidingScreen'), { ssr: false })
 
 interface Place {
   name: string
@@ -199,7 +199,7 @@ export default function CoursePage() {
   const [option, setOption] = useState<CourseOption>('bike')
   const [route, setRoute] = useState<RouteResult | null>(null)
   const [loading, setLoading] = useState(false)
-  const [showShare, setShowShare] = useState(false)
+  const [showRiding, setShowRiding] = useState(false)
 
   const [elevationPoints, setElevationPoints] = useState<ElevationPoint[] | null>(null)
   const [roadTypes, setRoadTypes] = useState<RoadType[] | null>(null)
@@ -860,7 +860,7 @@ export default function CoursePage() {
             💾 코스 저장
           </button>
           <button
-            onClick={() => setShowShare(true)}
+            onClick={() => setShowRiding(true)}
             disabled={!route}
             data-testid="btn-start-guide"
             className="flex-1 py-3 bg-green-600 hover:bg-green-500 disabled:bg-gray-800 disabled:text-gray-600 text-white font-bold rounded-xl transition-colors"
@@ -947,13 +947,13 @@ export default function CoursePage() {
         </div>
       )}
 
-      {/* 공유 모달 */}
-      {showShare && route && (
-        <ShareModal
+      {/* 라이딩 화면 */}
+      {showRiding && route && (
+        <RidingScreen
           geometry={route.geometry}
-          distance={route.distance}
-          duration={route.duration}
-          onClose={() => setShowShare(false)}
+          elevationPoints={elevationPoints ?? []}
+          totalDistance={route.distance}
+          onClose={() => setShowRiding(false)}
         />
       )}
 
