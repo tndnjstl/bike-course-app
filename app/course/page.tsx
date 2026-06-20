@@ -168,7 +168,7 @@ export default function CoursePage() {
   const [roadTypes, setRoadTypes] = useState<RoadType[] | null>(null)
   const [elevLoading, setElevLoading] = useState(false)
   const [elevError, setElevError] = useState(false)
-  const [elevOpen, setElevOpen] = useState(false)
+  const [elevOpen, setElevOpen] = useState(true)
 
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [saveName, setSaveName] = useState('')
