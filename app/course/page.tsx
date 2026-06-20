@@ -8,6 +8,7 @@ import { calcBikeRoute, formatDistance, formatDuration, guessStepType } from '@/
 import type { Coordinate, RouteResult, RouteStep } from '@/lib/osrm'
 import { saveCourse } from '@/lib/storage'
 import { fetchElevationProfile, calcElevationStats, type ElevationPoint } from '@/lib/elevation'
+import { classifyRoutePoints, type RoadType } from '@/lib/roadtype'
 
 const KakaoMap = dynamic(() => import('@/components/KakaoMap'), { ssr: false })
 const ElevationChart = dynamic(() => import('@/components/ElevationChart'), { ssr: false })
@@ -119,6 +120,7 @@ export default function CoursePage() {
   const [showShare, setShowShare] = useState(false)
 
   const [elevationPoints, setElevationPoints] = useState<ElevationPoint[] | null>(null)
+  const [roadTypes, setRoadTypes] = useState<RoadType[] | null>(null)
   const [elevLoading, setElevLoading] = useState(false)
   const [elevError, setElevError] = useState(false)
 
@@ -139,10 +141,11 @@ export default function CoursePage() {
   const lastElevGeomKeyRef = useRef<string | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  // 경로가 바뀌면 고도 자동 로드
+  // 경로가 바뀌면 고도 + 도로타입 분류 병렬 실행
   useEffect(() => {
     if (!route?.geometry?.length) {
       setElevationPoints(null)
+      setRoadTypes(null)
       lastElevGeomKeyRef.current = null
       return
     }
@@ -152,8 +155,15 @@ export default function CoursePage() {
     lastElevGeomKeyRef.current = key
     setElevLoading(true)
     setElevError(false)
-    fetchElevationProfile(g)
-      .then(pts => setElevationPoints(pts))
+    setRoadTypes(null)
+    Promise.all([
+      fetchElevationProfile(g),
+      classifyRoutePoints(g),
+    ])
+      .then(([pts, types]) => {
+        setElevationPoints(pts)
+        setRoadTypes(types)
+      })
       .catch(() => setElevError(true))
       .finally(() => setElevLoading(false))
   }, [route])
@@ -170,6 +180,7 @@ export default function CoursePage() {
     if (filled.length < 2) { setRoute(null); return }
     setLoading(true)
     setElevationPoints(null)
+    setRoadTypes(null)
     setElevError(false)
     lastElevGeomKeyRef.current = null
     const result = await calcBikeRoute(filled.map(s => s.coord!))
@@ -279,6 +290,7 @@ export default function CoursePage() {
     if (filled.length >= 2) {
       setLoading(true)
       setElevationPoints(null)
+      setRoadTypes(null)
       lastElevGeomKeyRef.current = null
       const profile = opt === 'shortest' ? 'foot' : 'bike'
       const result = await calcBikeRoute(filled.map(s => s.coord!), profile)
@@ -497,7 +509,7 @@ export default function CoursePage() {
               )}
             </div>
 
-            {elevationPoints && <ElevationChart points={elevationPoints} steps={route.steps} />}
+            {elevationPoints && <ElevationChart points={elevationPoints} roadTypes={roadTypes ?? undefined} />}
             {route.steps.length > 0 && <RouteSegmentList steps={route.steps} />}
           </>
         )}
