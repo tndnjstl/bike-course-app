@@ -3,10 +3,32 @@ export interface Coordinate {
   lng: number
 }
 
+export interface RouteStep {
+  name: string
+  distance: number
+  mode: string   // 'cycling' | 'pushing bike' | 'ferry' | ...
+}
+
 export interface RouteResult {
   distance: number   // meters
   duration: number   // seconds
   geometry: Coordinate[]
+  steps: RouteStep[]
+}
+
+export function guessStepType(step: RouteStep): 'bike' | 'road' | 'push' {
+  if (step.mode === 'pushing bike') return 'push'
+  const n = step.name.toLowerCase()
+  if (
+    n.includes('자전거') ||
+    n.includes('bike') ||
+    n.includes('cycle') ||
+    n.includes('bicycle') ||
+    n.includes('공원길') ||
+    n.includes('레일') ||
+    n.includes('산책로')
+  ) return 'bike'
+  return 'road'
 }
 
 export async function calcBikeRoute(
@@ -16,7 +38,7 @@ export async function calcBikeRoute(
   if (waypoints.length < 2) return null
 
   const coords = waypoints.map(p => `${p.lng},${p.lat}`).join(';')
-  const url = `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson&alternatives=false`
+  const url = `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson&steps=true`
 
   try {
     const res = await fetch(url)
@@ -28,11 +50,19 @@ export async function calcBikeRoute(
       ([lng, lat]: [number, number]) => ({ lat, lng })
     )
 
-    return {
-      distance: route.distance,
-      duration: route.duration,
-      geometry,
+    const steps: RouteStep[] = []
+    for (const leg of route.legs ?? []) {
+      for (const step of leg.steps ?? []) {
+        if (step.distance < 5) continue  // 극소 구간 제외
+        steps.push({
+          name: step.name || '',
+          distance: step.distance,
+          mode: step.mode || 'cycling',
+        })
+      }
     }
+
+    return { distance: route.distance, duration: route.duration, geometry, steps }
   } catch {
     return null
   }
@@ -45,20 +75,28 @@ export async function calcBikeRouteAlternatives(
   if (waypoints.length < 2) return []
 
   const coords = waypoints.map(p => `${p.lng},${p.lat}`).join(';')
-  const url = `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson&alternatives=3`
+  const url = `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson&alternatives=3&steps=true`
 
   try {
     const res = await fetch(url)
     const data = await res.json()
     if (data.code !== 'Ok' || !data.routes?.length) return []
 
-    return data.routes.map((route: any) => ({
-      distance: route.distance,
-      duration: route.duration,
-      geometry: route.geometry.coordinates.map(
-        ([lng, lat]: [number, number]) => ({ lat, lng })
-      ),
-    }))
+    return data.routes.map((route: any) => {
+      const steps: RouteStep[] = []
+      for (const leg of route.legs ?? []) {
+        for (const step of leg.steps ?? []) {
+          if (step.distance < 5) continue
+          steps.push({ name: step.name || '', distance: step.distance, mode: step.mode || 'cycling' })
+        }
+      }
+      return {
+        distance: route.distance,
+        duration: route.duration,
+        geometry: route.geometry.coordinates.map(([lng, lat]: [number, number]) => ({ lat, lng })),
+        steps,
+      }
+    })
   } catch {
     return []
   }

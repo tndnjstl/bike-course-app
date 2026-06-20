@@ -27,39 +27,50 @@ function sampleGeometry(coords: Coordinate[], max: number): Coordinate[] {
   return Array.from({ length: max }, (_, i) => coords[Math.round(i * step)])
 }
 
-// 데이터셋 우선순위: aster30m(아시아 전역 30m) → srtm30m(전 세계 ~1km)
-const DATASETS = ['aster30m', 'srtm30m']
-
-async function fetchDataset(dataset: string, locations: string): Promise<any> {
+async function fetchOpenMeteo(coords: Coordinate[]): Promise<number[]> {
+  const lats = coords.map(c => c.lat.toFixed(5)).join(',')
+  const lons = coords.map(c => c.lng.toFixed(5)).join(',')
   const res = await fetch(
-    `https://api.opentopodata.org/v1/${dataset}?locations=${locations}`,
-    { signal: AbortSignal.timeout(12000) }
+    `https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`,
+    { signal: AbortSignal.timeout(10000) }
   )
-  if (!res.ok) throw new Error(`${dataset} ${res.status}`)
+  if (!res.ok) throw new Error(`open-meteo ${res.status}`)
   const data = await res.json()
-  if (data.status !== 'OK') throw new Error(`${dataset} status:${data.status}`)
-  return data
+  if (!Array.isArray(data.elevation)) throw new Error('no elevation array')
+  return data.elevation as number[]
+}
+
+async function fetchOpenTopo(coords: Coordinate[]): Promise<number[]> {
+  const locations = coords.map(c => `${c.lat.toFixed(5)},${c.lng.toFixed(5)}`).join('|')
+  for (const ds of ['aster30m', 'srtm30m']) {
+    try {
+      const res = await fetch(
+        `https://api.opentopodata.org/v1/${ds}?locations=${locations}`,
+        { signal: AbortSignal.timeout(12000) }
+      )
+      if (!res.ok) continue
+      const data = await res.json()
+      if (data.status !== 'OK') continue
+      return (data.results as any[]).map(r => r.elevation ?? 0)
+    } catch { /* try next */ }
+  }
+  throw new Error('opentopodata 실패')
 }
 
 export async function fetchElevationProfile(geometry: Coordinate[]): Promise<ElevationPoint[]> {
   const sampled = sampleGeometry(geometry, 30)
-  const locations = sampled.map(c => `${c.lat.toFixed(5)},${c.lng.toFixed(5)}`).join('|')
 
-  let data: any = null
-  for (const ds of DATASETS) {
-    try {
-      data = await fetchDataset(ds, locations)
-      break
-    } catch {
-      // 다음 데이터셋 시도
-    }
+  let elevations: number[]
+  try {
+    elevations = await fetchOpenMeteo(sampled)
+  } catch {
+    elevations = await fetchOpenTopo(sampled)
   }
-  if (!data) throw new Error('모든 고도 API 실패')
 
   let cumDist = 0
-  return data.results.map((r: any, i: number) => {
-    if (i > 0) cumDist += haversineDistance(sampled[i - 1], sampled[i])
-    return { distance: cumDist, elevation: r.elevation ?? 0 }
+  return sampled.map((coord, i) => {
+    if (i > 0) cumDist += haversineDistance(sampled[i - 1], coord)
+    return { distance: cumDist, elevation: elevations[i] ?? 0 }
   })
 }
 

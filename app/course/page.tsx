@@ -4,8 +4,8 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import ShareModal from '@/components/ShareModal'
-import { calcBikeRoute, formatDistance, formatDuration } from '@/lib/osrm'
-import type { Coordinate } from '@/lib/osrm'
+import { calcBikeRoute, formatDistance, formatDuration, guessStepType } from '@/lib/osrm'
+import type { Coordinate, RouteResult, RouteStep } from '@/lib/osrm'
 import { saveCourse } from '@/lib/storage'
 import { fetchElevationProfile, calcElevationStats, type ElevationPoint } from '@/lib/elevation'
 
@@ -75,10 +75,46 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
   }
 }
 
+function RouteSegmentList({ steps }: { steps: RouteStep[] }) {
+  if (!steps.length) return null
+
+  // 연속된 동일 타입+이름 구간 병합
+  const merged: { name: string; distance: number; type: 'bike' | 'road' | 'push' }[] = []
+  for (const step of steps) {
+    const type = guessStepType(step)
+    const name = step.name || (type === 'bike' ? '자전거도로' : '도로')
+    const last = merged[merged.length - 1]
+    if (last && last.type === type && last.name === name) {
+      last.distance += step.distance
+    } else {
+      merged.push({ name, distance: step.distance, type })
+    }
+  }
+
+  const typeLabel: Record<string, string> = { bike: '자전거도로', road: '일반도로', push: '도보 구간' }
+  const typeColor: Record<string, string> = { bike: '#22c55e', road: '#6b7280', push: '#f59e0b' }
+
+  return (
+    <div className="mt-3 bg-gray-800 rounded-xl overflow-hidden">
+      <div className="px-3 py-2 text-gray-400 text-xs font-medium border-b border-gray-700/60">경로 구간</div>
+      {merged.map((seg, i) => (
+        <div key={i} className="flex items-center gap-3 px-3 py-2.5 border-b border-gray-700/40 last:border-0">
+          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: typeColor[seg.type] }} />
+          <div className="flex-1 min-w-0">
+            <div className="text-white text-xs truncate">{seg.name}</div>
+            <div className="text-xs mt-0.5" style={{ color: typeColor[seg.type] }}>{typeLabel[seg.type]}</div>
+          </div>
+          <div className="text-gray-400 text-xs flex-shrink-0 font-medium">{formatDistance(seg.distance)}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function CoursePage() {
   const [slots, setSlots] = useState<Slot[]>([newSlot(), newSlot()])
   const [option, setOption] = useState<CourseOption>('bike')
-  const [route, setRoute] = useState<{ geometry: Coordinate[]; distance: number; duration: number } | null>(null)
+  const [route, setRoute] = useState<RouteResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [showShare, setShowShare] = useState(false)
 
@@ -245,8 +281,7 @@ export default function CoursePage() {
       setElevationPoints(null)
       lastElevGeomKeyRef.current = null
       const profile = opt === 'shortest' ? 'foot' : 'bike'
-      const { calcBikeRoute: calc } = await import('@/lib/osrm')
-      const result = await calc(filled.map(s => s.coord!), profile as any)
+      const result = await calcBikeRoute(filled.map(s => s.coord!), profile)
       setRoute(result)
       setLoading(false)
     }
@@ -463,6 +498,7 @@ export default function CoursePage() {
             </div>
 
             {elevationPoints && <ElevationChart points={elevationPoints} />}
+            {route.steps.length > 0 && <RouteSegmentList steps={route.steps} />}
           </>
         )}
 
