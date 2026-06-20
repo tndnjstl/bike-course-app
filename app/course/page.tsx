@@ -61,6 +61,9 @@ const OPTION_LABELS: Record<CourseOption, string> = {
   shortest: '⚡ 최단거리',
 }
 
+const HANDLE_H = 28
+const SNAP_FRACS = [0.15, 0.50, 0.85]
+
 async function searchPlaces(q: string): Promise<Place[]> {
   if (!q.trim()) return []
   if (typeof window !== 'undefined' && (window as any).kakao?.maps?.services) {
@@ -168,9 +171,16 @@ export default function CoursePage() {
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
+  const [panelFrac, setPanelFrac] = useState(0.50)
+  const [bodyH, setBodyH] = useState(0)
+
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastElevGeomKeyRef = useRef<string | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const isDraggingHandleRef = useRef(false)
+  const dragStartYRef = useRef(0)
+  const dragStartFracRef = useRef(0.50)
 
   // 경로가 바뀌면 고도 + 도로타입 분류 병렬 실행
   useEffect(() => {
@@ -205,6 +215,52 @@ export default function CoursePage() {
       setTimeout(() => searchInputRef.current?.focus(), 50)
     }
   }, [activeSlotId])
+
+  // 바디 높이 측정
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const update = () => setBodyH(el.offsetHeight)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // 드래그 핸들 전역 이벤트
+  useEffect(() => {
+    const onMove = (clientY: number) => {
+      if (!isDraggingHandleRef.current) return
+      const dy = dragStartYRef.current - clientY
+      const avail = bodyH - HANDLE_H
+      if (!avail) return
+      const newFrac = Math.max(0.08, Math.min(0.88, dragStartFracRef.current + dy / avail))
+      setPanelFrac(newFrac)
+    }
+    const onMouseMove = (e: MouseEvent) => onMove(e.clientY)
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isDraggingHandleRef.current) return
+      e.preventDefault()
+      onMove(e.touches[0].clientY)
+    }
+    const onEnd = () => {
+      if (!isDraggingHandleRef.current) return
+      isDraggingHandleRef.current = false
+      setPanelFrac(prev => SNAP_FRACS.reduce((a, b) => Math.abs(b - prev) < Math.abs(a - prev) ? b : a))
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onEnd)
+    window.addEventListener('touchmove', onTouchMove, { passive: false })
+    window.addEventListener('touchend', onEnd)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onEnd)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onEnd)
+    }
+  }, [bodyH])
 
   const runRoute = useCallback(async (updatedSlots: Slot[]) => {
     const filled = updatedSlots.filter(s => s.coord !== null)
@@ -365,6 +421,14 @@ export default function CoursePage() {
   const elevStats = elevationPoints ? calcElevationStats(elevationPoints) : null
   const filledSlots = slots.filter(s => s.coord !== null)
 
+  const startDrag = (clientY: number) => {
+    isDraggingHandleRef.current = true
+    dragStartYRef.current = clientY
+    dragStartFracRef.current = panelFrac
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'row-resize'
+  }
+
   const dotColor = (i: number) => {
     if (i === 0) return '#16a34a'
     if (i === slots.length - 1) return '#dc2626'
@@ -377,31 +441,58 @@ export default function CoursePage() {
     return `경유${i}`
   }
 
+  const panelHeightPx = bodyH ? Math.max(80, (bodyH - HANDLE_H) * panelFrac) : undefined
+
   return (
     <div className="h-screen flex flex-col bg-gray-950">
+      {/* 로딩바 */}
+      {(loading || elevLoading) && (
+        <div className="fixed top-0 left-0 right-0 z-[9999] h-0.5 bg-gray-800 overflow-hidden pointer-events-none">
+          <div
+            className="absolute inset-y-0 bg-green-500"
+            style={{ width: '35%', animation: 'loading-slide 1.4s ease-in-out infinite' }}
+          />
+        </div>
+      )}
+
       {/* 헤더 */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800">
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800">
         <Link href="/" className="text-gray-400 hover:text-white text-lg">←</Link>
         <h1 className="text-white font-bold">코스 설계</h1>
         {saved && <span className="ml-auto text-green-400 text-xs">저장됨 ✓</span>}
       </div>
 
-      {/* 지도 */}
-      <div className="flex-1 relative min-h-0">
-        <KakaoMap
-          waypoints={filledSlots.map(s => s.coord!)}
-          routeGeometry={route?.geometry ?? []}
-          routeSegments={route && roadTypes ? buildSegments(route.geometry, roadTypes) : undefined}
-        />
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-            <div className="bg-gray-900 rounded-xl px-5 py-3 text-white text-sm">경로 계산 중...</div>
-          </div>
-        )}
-      </div>
+      {/* 바디 (지도 + 핸들 + 패널) */}
+      <div ref={bodyRef} className="flex-1 flex flex-col min-h-0">
+        {/* 지도 */}
+        <div className="flex-1 min-h-0 relative">
+          <KakaoMap
+            waypoints={filledSlots.map(s => s.coord!)}
+            routeGeometry={route?.geometry ?? []}
+            routeSegments={route && roadTypes ? buildSegments(route.geometry, roadTypes) : undefined}
+          />
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
+              <div className="bg-gray-900 rounded-xl px-5 py-3 text-white text-sm">경로 계산 중...</div>
+            </div>
+          )}
+        </div>
 
-      {/* 하단 패널 */}
-      <div className="bg-gray-900 border-t border-gray-800 px-4 pt-4 pb-6 max-h-[55vh] overflow-y-auto">
+        {/* 드래그 핸들 */}
+        <div
+          className="flex-shrink-0 bg-gray-900 border-t border-b border-gray-800 flex items-center justify-center cursor-row-resize select-none touch-none"
+          style={{ height: HANDLE_H }}
+          onMouseDown={e => startDrag(e.clientY)}
+          onTouchStart={e => { e.preventDefault(); startDrag(e.touches[0].clientY) }}
+        >
+          <div className="w-10 h-1 rounded-full bg-gray-600" />
+        </div>
+
+        {/* 하단 패널 */}
+        <div
+          className="flex-shrink-0 bg-gray-900 px-4 pt-4 pb-6 overflow-y-auto"
+          style={{ height: panelHeightPx }}
+        >
 
         {/* 출발/경유/도착 슬롯 */}
         <div className="mb-2">
@@ -646,6 +737,7 @@ export default function CoursePage() {
           >
             {route ? '안내 시작 →' : '경유지 2개 이상'}
           </button>
+        </div>
         </div>
       </div>
 

@@ -52,6 +52,17 @@ export default function KakaoMap({ waypoints, routeGeometry, routeSegments, onMa
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 컨테이너 크기 변경 시 Leaflet 지도 갱신
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      if (mapRef.current) mapRef.current.invalidateSize()
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   // 마커 업데이트
   useEffect(() => {
     const L = LRef.current
