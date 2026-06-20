@@ -105,6 +105,7 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
 }
 
 function RouteSegmentList({ steps }: { steps: RouteStep[] }) {
+  const [open, setOpen] = useState(false)
   if (!steps.length) return null
 
   // 연속된 동일 타입+이름 구간 병합
@@ -125,17 +126,33 @@ function RouteSegmentList({ steps }: { steps: RouteStep[] }) {
 
   return (
     <div className="mt-3 bg-gray-800 rounded-xl overflow-hidden">
-      <div className="px-3 py-2 text-gray-400 text-xs font-medium border-b border-gray-700/60">경로 구간</div>
-      {merged.map((seg, i) => (
-        <div key={i} className="flex items-center gap-3 px-3 py-2.5 border-b border-gray-700/40 last:border-0">
-          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: typeColor[seg.type] }} />
-          <div className="flex-1 min-w-0">
-            <div className="text-white text-xs truncate">{seg.name}</div>
-            <div className="text-xs mt-0.5" style={{ color: typeColor[seg.type] }}>{typeLabel[seg.type]}</div>
-          </div>
-          <div className="text-gray-400 text-xs flex-shrink-0 font-medium">{formatDistance(seg.distance)}</div>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-3 py-2.5 text-left"
+      >
+        <span className="text-gray-400 text-xs font-medium">경로 구간</span>
+        <svg
+          width="12" height="12" viewBox="0 0 12 12" fill="none"
+          className="text-gray-500 transition-transform duration-200"
+          style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+        >
+          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div className="border-t border-gray-700/60">
+          {merged.map((seg, i) => (
+            <div key={i} className="flex items-center gap-3 px-3 py-2.5 border-b border-gray-700/40 last:border-0">
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: typeColor[seg.type] }} />
+              <div className="flex-1 min-w-0">
+                <div className="text-white text-xs truncate">{seg.name}</div>
+                <div className="text-xs mt-0.5" style={{ color: typeColor[seg.type] }}>{typeLabel[seg.type]}</div>
+              </div>
+              <div className="text-gray-400 text-xs flex-shrink-0 font-medium">{formatDistance(seg.distance)}</div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }
@@ -151,6 +168,7 @@ export default function CoursePage() {
   const [roadTypes, setRoadTypes] = useState<RoadType[] | null>(null)
   const [elevLoading, setElevLoading] = useState(false)
   const [elevError, setElevError] = useState(false)
+  const [elevOpen, setElevOpen] = useState(false)
 
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [saveName, setSaveName] = useState('')
@@ -698,16 +716,38 @@ export default function CoursePage() {
                   }, [])
                 : undefined
               return elevLoading ? (
-                <div className="bg-gray-800 rounded-xl px-3 pt-3 pb-2 mt-3 animate-pulse">
-                  <div className="h-3 w-20 bg-gray-700 rounded mb-3" />
-                  <div className="h-[110px] bg-gray-700 rounded" />
+                <div className="bg-gray-800 rounded-xl mt-3 animate-pulse">
+                  <div className="px-3 py-2.5 flex items-center justify-between">
+                    <div className="h-3 w-16 bg-gray-700 rounded" />
+                    <div className="h-3 w-3 bg-gray-700 rounded" />
+                  </div>
                 </div>
               ) : elevationPoints ? (
-                <ElevationChart
-                  points={elevationPoints}
-                  roadTypes={roadTypes ?? undefined}
-                  waypointDists={waypointDists}
-                />
+                <div className="bg-gray-800 rounded-xl overflow-hidden mt-3">
+                  <button
+                    onClick={() => setElevOpen(v => !v)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 text-left"
+                  >
+                    <span className="text-gray-400 text-xs font-medium">경로 요약</span>
+                    <svg
+                      width="12" height="12" viewBox="0 0 12 12" fill="none"
+                      className="text-gray-500 transition-transform duration-200"
+                      style={{ transform: elevOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                    >
+                      <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  {elevOpen && (
+                    <div className="border-t border-gray-700/60">
+                      <ElevationChart
+                        points={elevationPoints}
+                        roadTypes={roadTypes ?? undefined}
+                        waypointDists={waypointDists}
+                        hideTitle
+                      />
+                    </div>
+                  )}
+                </div>
               ) : null
             })()}
 

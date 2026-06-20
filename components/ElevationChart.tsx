@@ -8,6 +8,7 @@ interface Props {
   points: ElevationPoint[]
   roadTypes?: RoadType[]
   waypointDists?: number[]  // 경유지가 위치한 누적 거리(m) 배열 (출발=0 제외, 도착 포함)
+  hideTitle?: boolean
 }
 
 const COLOR: Record<RoadType, string> = {
@@ -15,7 +16,7 @@ const COLOR: Record<RoadType, string> = {
   road: '#6b7280',
 }
 
-export default function ElevationChart({ points, roadTypes, waypointDists }: Props) {
+export default function ElevationChart({ points, roadTypes, waypointDists, hideTitle }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [chartW, setChartW] = useState(320)
 
@@ -64,26 +65,44 @@ export default function ElevationChart({ points, roadTypes, waypointDists }: Pro
     .join('')
 
   return (
-    <div ref={containerRef} className="bg-gray-800 rounded-xl px-3 pt-3 pb-2 mt-3">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-gray-400 text-xs font-medium">경로 요약</span>
-        {roadTypes && (
-          <div className="flex gap-3">
-            {hasBike && (
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: COLOR.bike }} />
-                <span className="text-gray-500 text-xs">자전거도로</span>
-              </div>
-            )}
-            {hasRoad && (
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: COLOR.road }} />
-                <span className="text-gray-500 text-xs">일반도로</span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+    <div ref={containerRef} className="px-3 pt-2 pb-2">
+      {!hideTitle && (
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-gray-400 text-xs font-medium">경로 요약</span>
+          {roadTypes && (
+            <div className="flex gap-3">
+              {hasBike && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: COLOR.bike }} />
+                  <span className="text-gray-500 text-xs">자전거도로</span>
+                </div>
+              )}
+              {hasRoad && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: COLOR.road }} />
+                  <span className="text-gray-500 text-xs">일반도로</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {hideTitle && roadTypes && (
+        <div className="flex gap-3 mb-2">
+          {hasBike && (
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: COLOR.bike }} />
+              <span className="text-gray-500 text-xs">자전거도로</span>
+            </div>
+          )}
+          {hasRoad && (
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: COLOR.road }} />
+              <span className="text-gray-500 text-xs">일반도로</span>
+            </div>
+          )}
+        </div>
+      )}
 
       <svg width={chartW} height={H} style={{ display: 'block' }}>
         <defs>
