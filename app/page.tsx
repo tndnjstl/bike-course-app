@@ -24,15 +24,6 @@ export default function Home() {
             <div className="text-green-200 text-sm mt-1">원하는 장소를 찍어 코스를 만들어요</div>
           </Link>
 
-          <Link
-            href="/ai"
-            data-testid="btn-ai"
-            className="block bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-2xl p-6 transition-colors"
-          >
-            <div className="text-3xl mb-2">🤖</div>
-            <div className="text-lg font-bold text-white">AI 코스 추천</div>
-            <div className="text-gray-400 text-sm mt-1">시간과 난이도를 입력하면 AI가 추천해요</div>
-          </Link>
         </div>
 
         {/* 저장된 코스 */}
