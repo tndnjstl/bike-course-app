@@ -35,6 +35,7 @@ export default function ElevationChart({ points, roadTypes, waypointDists, hideT
   const H = 110
   const PAD = { top: 10, right: 8, bottom: 22, left: 40 }
   const innerW = chartW - PAD.left - PAD.right
+  if (innerW <= 0) return null
   const innerH = H - PAD.top - PAD.bottom
 
   const elevations = points.map(p => p.elevation)
