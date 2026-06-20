@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
 :root {
+  --sat: env(safe-area-inset-top);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+  --sar: env(safe-area-inset-right);
+}
+
+:root {
   --background: #ffffff;
   --foreground: #171717;
 }

@@ -3,7 +3,7 @@ import SavedCourseList from '@/components/SavedCourseList'
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-4">
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-4" style={{paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)'}}>
       <div className="w-full max-w-sm">
         {/* 헤더 */}
         <div className="text-center mb-10">

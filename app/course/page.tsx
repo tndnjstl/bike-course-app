@@ -538,7 +538,7 @@ export default function CoursePage() {
   return (
     <div className="h-screen flex flex-col bg-gray-950">
       {/* 헤더 */}
-      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800">
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 bg-gray-900 border-b border-gray-800" style={{paddingTop: 'calc(0.75rem + env(safe-area-inset-top))', paddingBottom: '0.75rem'}}>
         <Link href="/" className="text-gray-400 hover:text-white text-lg">←</Link>
         <h1 className="text-white font-bold">코스 설계</h1>
         {saved && <span className="ml-auto text-green-400 text-xs">저장됨 ✓</span>}

@@ -73,7 +73,7 @@ export default function AIPage() {
     return (
       <div className="h-screen flex flex-col bg-gray-950">
         {/* 헤더 */}
-        <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800">
+        <div className="flex items-center gap-3 px-4 bg-gray-900 border-b border-gray-800" style={{paddingTop: 'calc(0.75rem + env(safe-area-inset-top))', paddingBottom: '0.75rem'}}>
           <button onClick={() => { setStage('form'); setRoute(null) }} className="text-gray-400 hover:text-white text-lg">←</button>
           <h1 className="text-white font-bold">AI 추천 코스</h1>
           <span className="ml-auto text-xs text-purple-400 bg-purple-900/30 px-2 py-1 rounded-full">
@@ -146,7 +146,7 @@ export default function AIPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 px-4 py-8">
+    <div className="min-h-screen bg-gray-950 px-4 pb-8" style={{paddingTop: 'calc(2rem + env(safe-area-inset-top))'}}>
       <div className="w-full max-w-sm mx-auto">
         {/* 헤더 */}
         <div className="flex items-center gap-3 mb-8">
