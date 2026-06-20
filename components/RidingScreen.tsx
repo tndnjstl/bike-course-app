@@ -204,18 +204,25 @@ export default function RidingScreen({ geometry, elevationPoints, totalDistance,
   const splitDist = maxElevDist * progress
 
   return (
-    <div className="fixed inset-0 z-[3000] flex flex-col bg-black" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-      {/* Map */}
-      <div ref={mapContainerRef} className="flex-1" style={{ position: 'relative', zIndex: 0 }}>
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 3000,
+      display: 'flex', flexDirection: 'column',
+      background: '#000', overflow: 'hidden',
+      paddingTop: 'env(safe-area-inset-top)',
+    }}>
+      {/* Map — flex:1, min-height:0 so it doesn't overflow */}
+      <div ref={mapContainerRef} style={{
+        flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden',
+      }}>
         {!isFollowing && (
           <button
             onClick={handleRecenter}
             style={{
-              position: 'absolute', bottom: 16, right: 16, zIndex: 1000,
-              background: 'rgba(15,23,42,0.9)', border: '1px solid #334155',
-              borderRadius: '50%', width: 44, height: 44,
+              position: 'absolute', bottom: 12, right: 12, zIndex: 1000,
+              background: 'rgba(15,23,42,0.92)', border: '1px solid #334155',
+              borderRadius: '50%', width: 40, height: 40,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 18, color: '#fff',
+              fontSize: 16, color: '#fff', cursor: 'pointer',
             }}
           >
             📍
@@ -223,8 +230,11 @@ export default function RidingScreen({ geometry, elevationPoints, totalDistance,
         )}
       </div>
 
-      {/* Bottom overlay */}
-      <div style={{ background: 'rgba(10,15,30,0.97)', borderTop: '1px solid #1e293b', zIndex: 10 }}>
+      {/* Bottom panel — flex-shrink:0, never grows, no scroll */}
+      <div style={{
+        flexShrink: 0, background: 'rgba(10,15,30,0.98)',
+        borderTop: '1px solid #1e293b', overflow: 'hidden',
+      }}>
         {/* Elevation strip */}
         {elevationPoints.length >= 2 && (
           <ElevationStrip points={elevationPoints} splitDist={splitDist} elevGain={Math.round(elevGain)} />
@@ -232,8 +242,8 @@ export default function RidingScreen({ geometry, elevationPoints, totalDistance,
 
         <div style={{ height: 1, background: '#1e293b', margin: '0 12px' }} />
 
-        {/* Stats */}
-        <div style={{ display: 'flex', padding: '10px 8px 6px' }}>
+        {/* Stats row */}
+        <div style={{ display: 'flex', padding: '8px 8px 6px' }}>
           <StatItem
             main={`${traveledKm}`}
             unit="km"
@@ -255,26 +265,21 @@ export default function RidingScreen({ geometry, elevationPoints, totalDistance,
           />
         </div>
 
-        {/* End button */}
-        <button
-          onClick={() => setShowConfirm(true)}
-          style={{
-            display: 'block',
-            width: 'calc(100% - 24px)',
-            margin: '0 12px',
-            marginBottom: 'calc(8px + env(safe-area-inset-bottom))',
-            padding: '12px',
-            background: '#dc2626',
-            color: '#fff',
-            fontWeight: 700,
-            fontSize: 14,
-            borderRadius: 14,
-            border: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          🏁 라이딩 종료
-        </button>
+        {/* End button — paddingBottom absorbs home indicator */}
+        <div style={{ padding: '0 12px', paddingBottom: 'calc(10px + env(safe-area-inset-bottom))' }}>
+          <button
+            onClick={() => setShowConfirm(true)}
+            style={{
+              width: '100%', padding: '13px',
+              background: '#dc2626', color: '#fff',
+              fontWeight: 700, fontSize: 15,
+              borderRadius: 14, border: 'none', cursor: 'pointer',
+              display: 'block',
+            }}
+          >
+            🏁 라이딩 종료
+          </button>
+        </div>
       </div>
 
       {/* Confirm dialog */}
