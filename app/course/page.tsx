@@ -463,16 +463,6 @@ export default function CoursePage() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-950">
-      {/* 로딩바 */}
-      {(loading || elevLoading) && (
-        <div className="fixed top-0 left-0 right-0 z-[9999] h-0.5 bg-gray-800 overflow-hidden pointer-events-none">
-          <div
-            className="absolute inset-y-0 bg-green-500"
-            style={{ width: '35%', animation: 'loading-slide 1.4s ease-in-out infinite' }}
-          />
-        </div>
-      )}
-
       {/* 헤더 */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 bg-gray-900 border-b border-gray-800">
         <Link href="/" className="text-gray-400 hover:text-white text-lg">←</Link>
@@ -637,21 +627,38 @@ export default function CoursePage() {
         </div>
 
         {/* 코스 결과 */}
-        {loading && (
-          /* 경로 계산 중 스켈레톤 */
-          <div className="bg-gray-800 rounded-xl px-4 py-3 animate-pulse">
-            <div className="flex gap-4">
+        {/* 코스 결과: 로딩 중엔 통합 로딩 카드, 완료 시 실제 데이터 */}
+        {(loading || elevLoading) ? (
+          <div className="bg-gray-800 rounded-xl overflow-hidden">
+            {/* 스탯 스켈레톤 */}
+            <div className="px-4 py-3 flex gap-4">
               {[0, 1, 2].map(i => (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
-                  <div className="h-6 w-14 bg-gray-700 rounded" />
-                  <div className="h-3 w-10 bg-gray-700 rounded" />
+                  <div className="h-6 w-14 bg-gray-700 rounded animate-pulse" />
+                  <div className="h-3 w-10 bg-gray-700 rounded animate-pulse" />
                 </div>
               ))}
             </div>
+            {/* 인라인 슬라이딩 로딩바 */}
+            <div className="px-4 pb-3">
+              <div className="h-0.5 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-green-500 rounded-full"
+                  style={{ width: '35%', animation: 'loading-slide 1.4s ease-in-out infinite' }}
+                />
+              </div>
+            </div>
+            {/* 경로 요약 / 경로 구간 플레이스홀더 */}
+            <div className="border-t border-gray-700/40 px-3 py-2.5 flex items-center justify-between">
+              <div className="h-3 w-16 bg-gray-700 rounded animate-pulse" />
+              <div className="h-3 w-3 bg-gray-700 rounded animate-pulse" />
+            </div>
+            <div className="border-t border-gray-700/40 px-3 py-2.5 flex items-center justify-between">
+              <div className="h-3 w-16 bg-gray-700 rounded animate-pulse" />
+              <div className="h-3 w-3 bg-gray-700 rounded animate-pulse" />
+            </div>
           </div>
-        )}
-
-        {route && !loading && (
+        ) : route ? (
           <>
             <div data-testid="route-result" className="bg-gray-800 rounded-xl px-4 py-3">
               <div className="flex gap-4">
@@ -664,15 +671,7 @@ export default function CoursePage() {
                   <div className="text-green-400 font-bold">{formatDuration(route.duration)}</div>
                   <div className="text-gray-500 text-xs">예상시간</div>
                 </div>
-                {elevLoading ? (
-                  <>
-                    <div className="w-px bg-gray-700" />
-                    <div className="flex-1 flex flex-col items-center gap-1.5 animate-pulse">
-                      <div className="h-5 w-12 bg-gray-700 rounded" />
-                      <div className="h-3 w-10 bg-gray-700 rounded" />
-                    </div>
-                  </>
-                ) : elevStats ? (
+                {elevStats ? (
                   <>
                     <div className="w-px bg-gray-700" />
                     <div className="text-center flex-1">
@@ -705,9 +704,8 @@ export default function CoursePage() {
               )}
             </div>
 
-            {/* 고도 차트: 로딩 중엔 스켈레톤 */}
-            {(() => {
-              // 경유지 누적 거리 계산 (경유1, 경유2, ..., 도착)
+            {/* 경로 요약 (ElevationChart) */}
+            {elevationPoints && (() => {
               const waypointDists = route.legs.length > 1
                 ? route.legs.reduce<number[]>((acc, leg, i) => {
                     const prev = acc[i - 1] ?? 0
@@ -715,14 +713,7 @@ export default function CoursePage() {
                     return acc
                   }, [])
                 : undefined
-              return elevLoading ? (
-                <div className="bg-gray-800 rounded-xl mt-3 animate-pulse">
-                  <div className="px-3 py-2.5 flex items-center justify-between">
-                    <div className="h-3 w-16 bg-gray-700 rounded" />
-                    <div className="h-3 w-3 bg-gray-700 rounded" />
-                  </div>
-                </div>
-              ) : elevationPoints ? (
+              return (
                 <div className="bg-gray-800 rounded-xl overflow-hidden mt-3">
                   <button
                     onClick={() => setElevOpen(v => !v)}
@@ -748,12 +739,12 @@ export default function CoursePage() {
                     </div>
                   )}
                 </div>
-              ) : null
+              )
             })()}
 
             {route.steps.length > 0 && <RouteSegmentList steps={route.steps} />}
           </>
-        )}
+        ) : null}
 
         {/* 버튼 행 */}
         <div className="mt-4 flex gap-3">
